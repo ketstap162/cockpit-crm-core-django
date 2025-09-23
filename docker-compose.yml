@@ -14,10 +14,10 @@ services:
   entities:
     build:
       context: .
-      dockerfile: entities/Dockerfile
+      dockerfile: entities/config/Dockerfile
     env_file:
       - .env
-      - entities/.env
+      - entities/config/.env
     depends_on:
       - db
     ports:

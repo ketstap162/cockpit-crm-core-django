@@ -24,6 +24,6 @@ RUN pip install --upgrade pip \
     && poetry config virtualenvs.create false \
     && poetry install --no-root
 
-COPY . .
+COPY .. .
 
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
