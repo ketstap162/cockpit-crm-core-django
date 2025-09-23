@@ -1,0 +1,22 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: cockpit
+      POSTGRES_PASSWORD: cockpit
+      POSTGRES_DB: cockpit
+    ports:
+      - "5432:5432"
+
+  entities:
+    build:
+      context: .
+      dockerfile: entities/Dockerfile
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
