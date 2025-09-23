@@ -7,6 +7,9 @@ services:
       POSTGRES_USER: cockpit
       POSTGRES_PASSWORD: cockpit
       POSTGRES_DB: cockpit
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
 
@@ -20,3 +23,6 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+
+volumes:
+  db_data:
