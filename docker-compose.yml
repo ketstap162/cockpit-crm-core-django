@@ -10,6 +10,8 @@ services:
       - ./db/init:/docker-entrypoint-initdb.d
     ports:
       - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+    networks:
+      - cockpit-crm-network
 
   entities:
     build:
@@ -24,6 +26,12 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+    networks:
+      - cockpit-crm-network
+
+networks:
+  cockpit-crm-network:
+    driver: bridge
 
 volumes:
   db_data:
