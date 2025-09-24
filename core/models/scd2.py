@@ -10,7 +10,7 @@ class SCD2ConstraintCollection:
     scd2_constraint = ExclusionConstraint(
         name='no_overlap_entity_versions',
         expressions=[
-            (F('entity_uid'), '='),
+            (F('uuid'), '='),
             (Func(F('valid_from'), F('valid_to'), function='tstzrange'), '&&')
         ],
     )
