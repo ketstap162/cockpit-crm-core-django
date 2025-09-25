@@ -3,6 +3,7 @@ from django.db import models, transaction
 from django.utils import timezone
 import hashlib
 from typing import Self
+from django.core.exceptions import ValidationError
 
 from core.models.base import BaseModel
 from core.models.uuid import UUIDModel, get_uuid_indexes
@@ -75,10 +76,26 @@ class SCD2BaseModel(UUIDModel, BaseModel):
 
         return new_version, old_version
 
-    def inject(self, **kwargs):
-        pass
+    def validate_inject(self):
+        if not self.hash_diff:
+            self.hash_diff = self.get_hash_diff()
 
-    def save(self, *args, **kwargs):
-        # Define hash_diff before saving
+        if self.__class__.objects.current().filter(hash_diff=self.hash_diff).exists():
+            field_values = {f: getattr(self, f) for f in self.detection_fields}
+            message = f"{self.__class__.__name__} with values {field_values} already exists."
+            # message = f"{self.__class__.__name__} with fields {self.detection_fields} is already exist."
+            raise ValidationError(message)
+
+    def inject(self, validate=True):
         self.hash_diff = self.get_hash_diff()
+
+        if validate:
+            self.validate_inject()
+
+        self.save(define_hash_diff=False)
+
+    def save(self, define_hash_diff=True, *args, **kwargs):
+        if define_hash_diff:
+            # Define hash_diff before saving
+            self.hash_diff = self.get_hash_diff()
         super().save()

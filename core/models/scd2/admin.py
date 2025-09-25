@@ -1,3 +1,6 @@
+from django.contrib import messages
+from django.core.exceptions import ValidationError
+
 from core.models.base import BaseModelAdmin
 
 
@@ -13,4 +16,7 @@ class SCD2ModelAdmin(BaseModelAdmin):
         if change:
             obj.new_version(save=True, **form.cleaned_data)
         else:
-            super().save_model(request, obj, form, change)
+            try:
+                obj.inject()
+            except ValidationError as e:
+                self.message_user(request, e.messages[0], level=messages.ERROR)
