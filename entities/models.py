@@ -1,13 +1,13 @@
 from django.db import models
 
 from core.models.base import BaseModel
-from core.models.uuid import UUIDMixin, btree_index_uuid
+from core.models.uuid import UUIDModel, get_uuid_indexes
 # from core.models.scd2 import SCD2Mixin, SCD2ConstraintCollection
 from core.models.scd2.constraints import get_scd2_constraint_list
-from core.models.scd2.models import SCD2BaseModel
+from core.models.scd2.models import SCD2BaseModel, get_scd2_indexes
 
 
-class EntityType(UUIDMixin, BaseModel):
+class EntityType(UUIDModel, BaseModel):
     # Fields
     code = models.CharField(max_length=50, unique=True)
     name = models.CharField(max_length=255)
@@ -16,7 +16,7 @@ class EntityType(UUIDMixin, BaseModel):
         verbose_name = "Entity Type"
         verbose_name_plural = "Entity Types"
         indexes = [
-            btree_index_uuid
+            *get_uuid_indexes("entity_type")
         ]
 
     def __str__(self):
@@ -26,6 +26,9 @@ class EntityType(UUIDMixin, BaseModel):
 class Entity(SCD2BaseModel):
     # Fields
     display_name = models.CharField(max_length=255)
+
+    # Tech attributes
+    detection_fields = ["display_name"]
 
     # Keys
     entity_type = models.ForeignKey(
@@ -39,7 +42,7 @@ class Entity(SCD2BaseModel):
         verbose_name = "Entity"
         verbose_name_plural = "Entities"
         indexes = [
-            btree_index_uuid,
+            *get_scd2_indexes("entity"),
             models.Index(fields=["display_name"]),
         ]
         constraints = [
@@ -62,11 +65,14 @@ class EntityDetail(SCD2BaseModel):
     # Keys
     entity_uuid = models.UUIDField()
 
+    # Tech attributes
+    detection_fields = ["detail_code", "value"]
+
     class Meta:
         verbose_name = "Entity Detail"
         verbose_name_plural = "Entity Details"
         indexes = [
-            btree_index_uuid,
+            *get_scd2_indexes("entity_detail"),
             models.Index(fields=['detail_code']),
         ]
         constraints = [

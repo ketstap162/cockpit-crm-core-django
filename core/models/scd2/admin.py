@@ -11,6 +11,6 @@ class SCD2ModelAdmin(BaseModelAdmin):
 
     def save_model(self, request, obj, form, change):
         if change:
-            obj.new_version(**form.cleaned_data)
+            obj.new_version(save=True, **form.cleaned_data)
         else:
             super().save_model(request, obj, form, change)
