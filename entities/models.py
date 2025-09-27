@@ -31,7 +31,7 @@ class EntityType(UUIDModel, BaseModel):
 class Entity(SCD2BaseModel):
     # Fields
     display_name = models.CharField(max_length=255)
-    search_vector = SearchVectorField(null=True)
+    # search_vector = SearchVectorField(null=True)
 
     # Keys
     entity_type = models.ForeignKey(
@@ -50,7 +50,7 @@ class Entity(SCD2BaseModel):
         verbose_name_plural = "Entities"
         indexes = [
             *get_scd2_indexes("entity"),
-            GinIndex(fields=["search_vector"], name="entity_search_gin")
+            GinIndex(fields=['display_name'], name='entity_display_name_gin', opclasses=['gin_trgm_ops'])
         ]
         constraints = [
             UniqueConstraint(
