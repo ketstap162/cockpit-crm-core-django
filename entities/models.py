@@ -29,6 +29,7 @@ class Entity(SCD2BaseModel):
 
     # Tech attributes
     detection_fields = ["display_name"]
+    allow_hash_diff = False
 
     # Keys
     entity_type = models.ForeignKey(
@@ -80,6 +81,11 @@ class EntityDetail(SCD2BaseModel):
                 fields=['entity_uuid', 'detail_code'],
                 condition=models.Q(is_current=True),
                 name='unique_current_entity_detail'
+            ),
+            models.UniqueConstraint(
+                fields=['entity_uuid'],
+                condition=models.Q(is_current=True),
+                name='unique_current_per_entity_uuid'
             ),
             *get_scd2_constraint_list("entity_detail"),
         ]

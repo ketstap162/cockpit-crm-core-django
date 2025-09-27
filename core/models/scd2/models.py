@@ -4,6 +4,7 @@ from django.utils import timezone
 import hashlib
 from typing import Self
 from django.core.exceptions import ValidationError
+from rest_framework import exceptions as drf_exc
 
 from core.models.base import BaseModel
 from core.models.uuid import UUIDModel, get_uuid_indexes
@@ -27,6 +28,7 @@ class SCD2BaseModel(UUIDModel, BaseModel):
 
     # Tech attributes
     detection_fields = []
+    allow_hash_diff = True
 
     class Meta:
         abstract = True
@@ -61,12 +63,21 @@ class SCD2BaseModel(UUIDModel, BaseModel):
         timestamp = timezone.now()
         old_version = self.close(timestamp=timestamp)
 
-        attrs = {**self.__dict__, **kwargs}
-        attrs.pop("id", None)
-        attrs.pop("_state", None)
+        # attrs = {**self.__dict__, **kwargs}
+        # attrs.pop("id", None)
+        # attrs.pop("_state", None)
+        # attrs["valid_from"] = timestamp
+        # attrs["valid_to"] = None
+        # attrs["is_current"] = True
+        # new_version = self.__class__(**attrs)
+
+        attrs = {f.name: getattr(self, f.name) for f in self._meta.fields if
+                 f.name not in ["id", "valid_from", "valid_to", "is_current"]}
+        attrs.update(kwargs)
         attrs["valid_from"] = timestamp
         attrs["valid_to"] = None
         attrs["is_current"] = True
+
         new_version = self.__class__(**attrs)
 
         if save:
@@ -76,7 +87,7 @@ class SCD2BaseModel(UUIDModel, BaseModel):
 
         return new_version, old_version
 
-    def validate_inject(self):
+    def validate_inject(self, drf=False):
         if not self.hash_diff:
             self.hash_diff = self.get_hash_diff()
 
@@ -84,15 +95,21 @@ class SCD2BaseModel(UUIDModel, BaseModel):
             field_values = {f: getattr(self, f) for f in self.detection_fields}
             message = f"{self.__class__.__name__} with values {field_values} already exists."
             # message = f"{self.__class__.__name__} with fields {self.detection_fields} is already exist."
+
+            if drf:
+                raise drf_exc.ValidationError(message)
             raise ValidationError(message)
 
-    def inject(self, validate=True):
+    def inject(self, validate=True, rest=False, save=True) -> Self:
         self.hash_diff = self.get_hash_diff()
 
-        if validate:
-            self.validate_inject()
+        if validate and not self.allow_hash_diff:
+            self.validate_inject(rest)
 
-        self.save(define_hash_diff=False)
+        if save:
+            self.save(define_hash_diff=False)
+
+        return self
 
     def save(self, define_hash_diff=True, *args, **kwargs):
         if define_hash_diff:
