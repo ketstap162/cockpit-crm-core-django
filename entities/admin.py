@@ -17,30 +17,12 @@ class EntityTypeAdmin(BaseModelAdmin):
 
 @admin.register(models.Entity)
 class EntityAdmin(SCD2ModelAdmin):
-    list_display = (
-        "display_name",
-        "entity_type",
-        "uuid",
-        "is_current",
-        "valid_from",
-        "valid_to",
-    )
+    list_display = ("uuid", "entity_type", "display_name", "is_current", "valid_from", "valid_to",)
     list_filter = ("entity_type", "is_current")
     search_fields = ("display_name", "uuid")
     ordering = ("display_name",)
     autocomplete_fields = ("entity_type",)
-    readonly_fields = ("uuid", "valid_from", "valid_to")
-
-    actions = ["close_selected"]
-
-    def close_selected(self, request, queryset):
-        """
-        Closes the current version of the selected Entity.
-        """
-        for obj in queryset:
-            obj.close()
-        self.message_user(request, "Selected entities have been closed.")
-    close_selected.short_description = "Close selected current versions"
+    readonly_fields = ("uuid", "valid_from", "valid_to", "is_current", "hash_diff")
 
 
 @admin.register(models.EntityDetail)
@@ -51,12 +33,10 @@ class EntityDetailAdmin(SCD2ModelAdmin):
         "entity_uuid",
         "detail_code",
         "value",
-        "uuid",
         "is_current",
         "valid_from",
         "valid_to",
     )
-    list_filter = ("is_current",)
-    search_fields = ("detail_code", "value", "uuid")
+    search_fields = ("detail_code", "entity_uuid")
     ordering = ("detail_code",)
-    readonly_fields = ("uuid", "valid_from", "valid_to")
+    readonly_fields = ("detail_code", "valid_from", "valid_to", "is_current", "hash_diff")

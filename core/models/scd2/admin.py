@@ -1,6 +1,3 @@
-from django.contrib import messages
-from django.core.exceptions import ValidationError
-
 from core.models.base import BaseModelAdmin
 
 
@@ -9,14 +6,18 @@ class SCD2ModelAdmin(BaseModelAdmin):
     A mixin for ModelAdmin with SCD2 support.
     Intercepts model updates and creates a new version instead of a direct update.
     """
-    readonly_fields = ("uuid", "valid_from", "valid_to", "is_current")
-    list_filter = ("is_current",)
+    readonly_fields = ("valid_from", "valid_to", "is_current")
+    list_filter = ("is_current", "valid_from", "valid_to")
 
-    def save_model(self, request, obj, form, change):
-        if change:
-            obj.new_version(save=True, **form.cleaned_data)
-        else:
-            try:
-                obj.inject()
-            except ValidationError as e:
-                self.message_user(request, e.messages[0], level=messages.ERROR)
+    # scd_fields = ("valid_from", "valid_to", "is_current")
+
+    actions = ["close_selected"]
+
+    def close_selected(self, request, queryset):
+        """
+        Closes the current version of the selected Entity.
+        """
+        for obj in queryset:
+            obj.close()
+        self.message_user(request, "Selected entities have been closed.")
+    close_selected.short_description = "Close selected current versions"

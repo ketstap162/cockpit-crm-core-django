@@ -17,6 +17,17 @@ from . import docs
 from . import serializers as sz
 
 
+def index(request):
+    mro = Entity.__mro__
+
+    lst = []
+    for x in mro:
+        lst.append(str(x))
+
+    resp = "".join(lst[:-3])
+    return HttpResponse(mro[1].__class__.__name__)
+
+
 class EntitiesView(APIView):
     @extend_schema(**docs.EntitiesViewDoc.get)
     def get(self, request):
@@ -56,14 +67,14 @@ class EntitiesView(APIView):
         with transaction.atomic():
             # Create entity
             entity = Entity(display_name=display_name, entity_type=entity_type)
-            entity.inject(rest=True)
+            entity.ingest(rest=True)
 
             # Create details
             if details_data:
                 EntityDetail(
                     entity_uuid=entity.uuid,
                     **details_data
-                ).inject()
+                ).ingest()
 
         return Response({"uuid": str(entity.uuid)}, status=status.HTTP_201_CREATED)
 
@@ -129,7 +140,7 @@ class EntitySnapshotView(APIView):
                     entity_uuid=entity_uuid,
                     **detail_data
                 )
-                entity_detail.inject(save=False)
+                # entity_detail.save()
                 save_list.append(entity_detail)
 
         # Commit

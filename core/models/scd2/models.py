@@ -1,34 +1,33 @@
-from django.contrib.postgres.indexes import GistIndex
+from typing import Self
+
 from django.db import models, transaction
 from django.utils import timezone
-import hashlib
-from typing import Self
-from django.core.exceptions import ValidationError
-from rest_framework import exceptions as drf_exc
 
 from core.models.base import BaseModel
-from core.models.uuid import UUIDModel, get_uuid_indexes
-
 from core.models.scd2.constraints import get_scd2_constraint_list
 
 
-def get_scd2_indexes(model_name):
-    return [
-        *get_uuid_indexes(model_name),
-        GistIndex(fields=["hash_diff"], name=f"idx_hd_gist_{model_name}")
-    ]
+class SCD2ModelConfig:
+    detection_fields: list[str] = []
+
+    def __init__(
+            self,
+            model_name: str = None,
+            detection_fields: list[str] = None,
+            natural_key_fields: list[str] = None
+    ):
+        self.model_name = model_name
+        self.detection_fields = detection_fields
+        self.natural_key_fields = natural_key_fields
 
 
-class SCD2BaseModel(UUIDModel, BaseModel):
+class SCD2BaseModel(BaseModel):
     valid_from = models.DateTimeField(default=timezone.now)
     valid_to = models.DateTimeField(null=True, blank=True)
     is_current = models.BooleanField(default=True)
-    # change_ts = models.DateTimeField(default=timezone.now)
-    hash_diff = models.CharField(max_length=64, blank=True, editable=False, db_index=False)
 
-    # Tech attributes
-    detection_fields = []
-    allow_hash_diff = True
+    # Tech attributes (Not stored in DB)
+    scd2_config: SCD2ModelConfig
 
     class Meta:
         abstract = True
@@ -37,14 +36,6 @@ class SCD2BaseModel(UUIDModel, BaseModel):
         constraints = [
             *get_scd2_constraint_list("model_name"),
         ]
-        indexes = [
-            *get_scd2_indexes("model_name"),
-        ]
-
-    def get_hash_diff(self) -> str:
-        values = [str(getattr(self, f)) for f in self.detection_fields]
-        s = "|".join(values)
-        return hashlib.sha256(s.encode()).hexdigest()
 
     def close(self, timestamp=None, save=False) -> Self:
         """
@@ -55,64 +46,59 @@ class SCD2BaseModel(UUIDModel, BaseModel):
             self.valid_to = timestamp or timezone.now()
 
             if save:
-                self.save()
+                self.save(new_version=False)
 
         return self
 
-    def new_version(self, save=False, **kwargs) -> (Self, Self):
+    def new_version(self, save=True, with_transaction=True, *args, **kwargs) -> (Self, Self):
         timestamp = timezone.now()
-        old_version = self.close(timestamp=timestamp)
 
-        # attrs = {**self.__dict__, **kwargs}
-        # attrs.pop("id", None)
-        # attrs.pop("_state", None)
-        # attrs["valid_from"] = timestamp
-        # attrs["valid_to"] = None
-        # attrs["is_current"] = True
-        # new_version = self.__class__(**attrs)
+        old_version = self.__class__.objects.get(pk=self.pk)
+        old_version = old_version.close(timestamp=timestamp)
 
-        attrs = {f.name: getattr(self, f.name) for f in self._meta.fields if
-                 f.name not in ["id", "valid_from", "valid_to", "is_current"]}
-        attrs.update(kwargs)
+        attrs = {**self.__dict__, **kwargs}
+        attrs.pop("id", None)
+        attrs.pop("_state", None)
         attrs["valid_from"] = timestamp
         attrs["valid_to"] = None
         attrs["is_current"] = True
-
         new_version = self.__class__(**attrs)
 
         if save:
-            with transaction.atomic():
-                old_version.save(update_fields=["valid_to", "is_current"])
-                new_version.save()
+            if with_transaction:
+                with transaction.atomic():
+                    old_version.save(
+                        new_version=False,
+                        update_fields=["valid_to", "is_current"]
+                    )
+                    new_version.save(new_version=False)
+            else:
+                old_version.save(
+                    new_version=False,
+                    update_fields=["valid_to", "is_current"]
+                )
+                new_version.save(new_version=False)
 
         return new_version, old_version
 
-    def validate_inject(self, drf=False):
-        if not self.hash_diff:
-            self.hash_diff = self.get_hash_diff()
+    def _has_changes(self):
+        """
+        Check if any of the detection_fields have changed compared to the current DB version.
+        """
+        if not self.pk or not self.scd2_config.detection_fields:
+            return True  # new object or no detection fields → consider as changed
 
-        if self.__class__.objects.current().filter(hash_diff=self.hash_diff).exists():
-            field_values = {f: getattr(self, f) for f in self.detection_fields}
-            message = f"{self.__class__.__name__} with values {field_values} already exists."
-            # message = f"{self.__class__.__name__} with fields {self.detection_fields} is already exist."
+        db_obj = self.__class__.objects.filter(pk=self.pk).first()
+        if not db_obj:
+            return True
 
-            if drf:
-                raise drf_exc.ValidationError(message)
-            raise ValidationError(message)
+        for field in self.scd2_config.detection_fields:
+            if getattr(self, field) != getattr(db_obj, field):
+                return True
 
-    def inject(self, validate=True, rest=False, save=True) -> Self:
-        self.hash_diff = self.get_hash_diff()
+        return False
 
-        if validate and not self.allow_hash_diff:
-            self.validate_inject(rest)
-
-        if save:
-            self.save(define_hash_diff=False)
-
-        return self
-
-    def save(self, define_hash_diff=True, *args, **kwargs):
-        if define_hash_diff:
-            # Define hash_diff before saving
-            self.hash_diff = self.get_hash_diff()
-        super().save()
+    def save(self, new_version=True, with_transaction=False, *args, **kwargs):
+        if self.pk and new_version and self._has_changes():
+            return self.new_version(save=True, with_transaction=with_transaction, *args, **kwargs)
+        super().save(*args, **kwargs)
