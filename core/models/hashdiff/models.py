@@ -61,20 +61,9 @@ class HashDiffMixin(models.Model):
            (idempotent behavior).
         3. Otherwise, updates `hash_diff` and calls the superclass save method.
         """
-        try:
-            with open("log.txt", 'a', encoding='utf-8') as f:
-                f.write("save() calling in HashDiffMixin\n")
-        except IOError as e:
-            pass
-
         if self.hash_diff_config.fields and self.pk:
             # kwargs["hash_diff_checked"] = True
             new_hash = self.compute_hash_diff()
-            try:
-                with open("log.txt", 'a', encoding='utf-8') as f:
-                    f.write(f"new_hash={new_hash} | self.hash_diff={self.hash_diff} in HashDiffMixin\n")
-            except IOError as e:
-                pass
             if new_hash == self.hash_diff:
                 return
             self.hash_diff = new_hash
