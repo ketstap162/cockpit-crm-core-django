@@ -24,7 +24,7 @@ def get_object_changes(
 
     changes = []
 
-    for field in new_version.detection_fields:
+    for field in new_version.scd2_config.detection_fields:
         new_value = getattr(new_version, field)
         old_value = getattr(old_version, field)
 
