@@ -1,0 +1,53 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:14
+    env_file:
+      - .env
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    ports:
+      - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+    networks:
+      - cockpit-crm-network
+
+  cockpit:
+    build:
+      context: .
+      dockerfile: cockpit/config/Dockerfile
+    env_file:
+      - .env
+      - cockpit/config/.env
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    networks:
+      - cockpit-crm-network
+
+  entities:
+    build:
+      context: .
+      dockerfile: entities/config/Dockerfile
+    env_file:
+      - .env
+      - entities/config/.env
+    depends_on:
+      - db
+    ports:
+      - "8001:8000"
+    volumes:
+      - .:/app
+    networks:
+      - cockpit-crm-network
+
+networks:
+  cockpit-crm-network:
+    driver: bridge
+
+volumes:
+  db_data:
