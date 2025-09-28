@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 
 from django.db import transaction
 from django.db.models import OuterRef, Exists, Q
-from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions as drf_exc
@@ -10,6 +9,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from auth.permissions import AccessPermissionFactory
 from core.models.scd2.changes import map_by_field, fill_dict_with_changes
 from core.utils.orm import get_one_or_fail, get_one_or_none
 from entities.models import Entity, EntityDetail
@@ -17,18 +17,17 @@ from . import docs
 from . import serializers as sz
 
 
-def index(request):
-    mro = Entity.__mro__
+class EntitiesAPIView(APIView):
+    permission_classes = [
+        AccessPermissionFactory.get_access_permission(
+            allowed_roles=["cockpit_admin", "entity_admin"],
+            auth_required=True,
+            allow_superuser=True,
+        )
+    ]
 
-    lst = []
-    for x in mro:
-        lst.append(str(x))
 
-    resp = "".join(lst[:-3])
-    return HttpResponse(mro[1].__class__.__name__)
-
-
-class EntitiesView(APIView):
+class EntitiesView(EntitiesAPIView):
     @extend_schema(**docs.EntitiesViewDoc.get)
     def get(self, request):
         search_term = request.query_params.get("search")
@@ -67,23 +66,24 @@ class EntitiesView(APIView):
         with transaction.atomic():
             # Create entity
             entity = Entity(display_name=display_name, entity_type=entity_type)
-            entity.ingest(rest=True)
+            entity.save()
 
             # Create details
             if details_data:
                 EntityDetail(
                     entity_uuid=entity.uuid,
                     **details_data
-                ).ingest()
+                ).save()
 
         return Response({"uuid": str(entity.uuid)}, status=status.HTTP_201_CREATED)
 
 
-class EntitySnapshotView(APIView):
+class EntitySnapshotView(EntitiesAPIView):
     """
     GET /api/v1/entities/{entity_uuid}
     Return the current snapshot of an Entity and its details.
     """
+    @extend_schema(**docs.EntitySnapshotViewDoc.get)
     def get(self, request, entity_uuid):
         entity = get_object_or_404(
             Entity.objects.current(),
@@ -160,11 +160,12 @@ class EntitySnapshotView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class EntityHistoryView(APIView):
+class EntityHistoryView(EntitiesAPIView):
     """
     GET /api/v1/entities/{entity_uuid}/history
     Return full SCD2 history for Entity and its EntityDetails.
     """
+    @extend_schema(**docs.EntityHistoryViewDoc.get)
     def get(self, request, entity_uuid):
         get_object_or_404(Entity.objects.current(), uuid=entity_uuid)
 
@@ -182,7 +183,7 @@ class EntityHistoryView(APIView):
         )
 
 
-class EntityAsOfView(APIView):
+class EntityAsOfView(EntitiesAPIView):
     """
     GET /api/v1/entities-asof?as_of=YYYY-MM-DD
     Returns a snapshot of all Entities and their Details valid at the specified date. Uses SCD2 logic.
@@ -218,7 +219,7 @@ class EntityAsOfView(APIView):
         )
 
 
-class EntityDiffView(APIView):
+class EntityDiffView(EntitiesAPIView):
     @extend_schema(**docs.EntityDiffViewDoc.get)
     def get(self, request):
         from_date = request.query_params.get("from")
