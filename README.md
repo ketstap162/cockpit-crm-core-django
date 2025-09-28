@@ -158,6 +158,11 @@ python manage.py migrate
 ```
 
 ## Testing
+> **Note**
+> It is recommended to run tests for each app in its corresponding container.  
+> Each app has its own set of tests that target its specific URLs, which may not exist in the `cockpit` or other modules.
+
+
 ```bash
 # Run all tests
 poetry run pytest
