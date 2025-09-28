@@ -14,19 +14,16 @@ class EntitySerializer(serializers.ModelSerializer):
             "uuid",
             "display_name",
             "entity_type",
-            # "valid_from",
-            # "valid_to",
             "is_current",
         ]
 
 
 class EntityDetailCreateSerializer(serializers.ModelSerializer):
-    detail_code = serializers.CharField(max_length=100)
     value = serializers.CharField()
 
     class Meta:
         model = EntityDetail
-        fields = ["detail_code", "value"]
+        fields = ["value"]
 
 
 class EntityCreateSerializer(serializers.ModelSerializer):
@@ -115,12 +112,11 @@ class EntityDetailHistorySerializer(serializers.ModelSerializer):
 
 
 class EntityDetailUpdateSerializer(serializers.ModelSerializer):
-    detail_code = serializers.CharField(max_length=100)
     value = serializers.CharField()
 
     class Meta:
         model = EntityDetail
-        fields = ["detail_code", "value"]
+        fields = ["value"]
 
 
 class EntityUpdateSerializer(serializers.ModelSerializer):
