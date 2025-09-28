@@ -4,6 +4,7 @@ from rest_framework.test import APIClient
 from entities.models import Entity, EntityType, EntityDetail
 from django.urls import reverse
 from rest_framework import status
+from datetime import datetime, timedelta, timezone
 
 pytestmark = pytest.mark.django_db
 
@@ -43,7 +44,6 @@ def entity_detail(entity):
 
 @pytest.fixture
 def users():
-    """Створює словник користувачів різного типу."""
     anon = None
 
     authenticated = User.objects.create_user(username="auth_user", password="password")
@@ -70,8 +70,7 @@ def users():
 
 
 def _authenticate_user(self, api_client, users, user_key, force_auth):
-    """Форсує авторизацію для конкретного користувача, або None для anon"""
-    api_client.force_authenticate(user=None)  # скидаємо попередню автентифікацію
+    api_client.force_authenticate(user=None)
     user = users[user_key]
     if force_auth and user:
         api_client.force_authenticate(user=user)
@@ -95,13 +94,20 @@ class TestEntitiesAPI:
         else:
             api_client.force_authenticate(user=None)
 
-    def test_list_entities(self, api_client, users, entity, user_key, force_auth, expected_status_get, expected_status_post, expected_status_patch):
+    def test_list_entities(
+            self, api_client, users, entity,
+            user_key, force_auth, expected_status_get,
+            expected_status_post, expected_status_patch
+    ):
         self._authenticate_user(api_client, users, user_key, force_auth)
         url = reverse("entity")
         response = api_client.get(url)
         assert response.status_code == expected_status_get
 
-    def test_filter_entities_by_search(self, api_client, users, entity, user_key, force_auth, expected_status_get, expected_status_post, expected_status_patch):
+    def test_filter_entities_by_search(
+            self, api_client, users, entity, user_key, force_auth,
+            expected_status_get, expected_status_post, expected_status_patch
+    ):
         self._authenticate_user(api_client, users, user_key, force_auth)
         url = reverse("entity")
         response = api_client.get(url, {"search": "My"})
@@ -114,7 +120,10 @@ class TestEntitiesAPI:
         if expected_status_get == status.HTTP_200_OK:
             assert len(response_empty.data) == 0
 
-    def test_create_entity(self, api_client, users, entity_type, user_key, force_auth, expected_status_get, expected_status_post, expected_status_patch):
+    def test_create_entity(
+            self, api_client, users, entity_type, user_key, force_auth,
+            expected_status_get, expected_status_post, expected_status_patch
+    ):
         self._authenticate_user(api_client, users, user_key, force_auth)
         url = reverse("entity")
         payload = {
@@ -145,3 +154,101 @@ class TestEntitiesAPI:
         payload = {"display_name": "UpdatedEntity", "detail": {"value": "UpdatedValue"}}
         response = api_client.patch(url, payload, format="json")
         assert response.status_code == expected_status_patch
+
+
+def test_entity_diff(api_client, users, entity, entity_detail):
+    user = users["superuser"]
+    api_client.force_authenticate(user=user)
+
+    url_snapshot = reverse("entity-snapshot", args=[entity.uuid])
+    payload = {"display_name": "UpdatedEntity", "detail": {"value": "UpdatedValue"}}
+    api_client.patch(url_snapshot, payload, format="json")
+
+    today = datetime.now(timezone.utc).date()
+    yesterday = today - timedelta(days=1)
+
+    diff_url = reverse("entities-diff")
+    response = api_client.get(diff_url, {
+        "from": yesterday.strftime("%Y-%m-%d"),
+        "to": today.strftime("%Y-%m-%d"),
+    })
+
+    assert response.status_code == status.HTTP_200_OK
+
+    assert "entity_changes" in response.data
+    assert str(entity.uuid) in response.data["entity_changes"]
+
+    entity_diff = response.data["entity_changes"][str(entity.uuid)]
+
+    assert any(
+        "display_name" in change
+        for changes_list in entity_diff.get("entity_history", {}).values()
+        for change in changes_list
+    )
+
+    assert any(
+        "value" in change
+        for changes_list in entity_diff.get("entity_detail_history", {}).values()
+        for change in changes_list
+    )
+
+
+def test_create_entity_idempotent(api_client, users, entity_type):
+    user = users["superuser"]
+    api_client.force_authenticate(user=user)
+
+    url = reverse("entity")
+    payload = {
+        "display_name": "UniqueEntity",
+        "entity_type_code": entity_type.code,
+        "detail": {"value": "Red"},
+    }
+
+    response1 = api_client.post(url, payload, format="json")
+    response2 = api_client.post(url, payload, format="json")
+
+    assert response1.status_code == status.HTTP_201_CREATED
+    assert response2.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED, status.HTTP_409_CONFLICT)
+
+
+def test_patch_entity_idempotent(api_client, users, entity, entity_detail):
+    user = users["superuser"]
+    api_client.force_authenticate(user=user)
+
+    url = reverse("entity-snapshot", args=[entity.uuid])
+    payload = {"display_name": "SameName", "detail": {"value": "SameValue"}}
+
+    response1 = api_client.patch(url, payload, format="json")
+    response2 = api_client.patch(url, payload, format="json")
+
+    assert response1.status_code == status.HTTP_200_OK
+    assert response2.status_code in (status.HTTP_200_OK, status.HTTP_204_NO_CONTENT)
+
+
+def test_create_entity_with_invalid_type(api_client, users):
+    user = users["superuser"]
+    api_client.force_authenticate(user=user)
+
+    url = reverse("entity")
+    payload = {
+        "display_name": "InvalidEntity",
+        "entity_type_code": "NOT_EXIST",
+        "detail": {"value": "Blue"},
+    }
+    response = api_client.post(url, payload, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+def test_create_entity_without_required_field(api_client, users, entity_type):
+    user = users["superuser"]
+    api_client.force_authenticate(user=user)
+
+    url = reverse("entity")
+    payload = {
+        # "display_name" missed
+        "entity_type_code": entity_type.code,
+        "detail": {"value": "Blue"},
+    }
+    response = api_client.post(url, payload, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
